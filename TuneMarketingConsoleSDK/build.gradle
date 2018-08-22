@@ -1,0 +1,221 @@
+apply plugin: 'com.android.library'
+
+ext {
+    PUBLISH_GROUP_ID = 'com.tune'
+    PUBLISH_ARTIFACT_ID = 'tune-marketing-console-sdk'
+    PUBLISH_VERSION = '6.0.1'
+}
+
+android {
+    compileSdkVersion 27
+    buildToolsVersion '27.0.3'
+
+    defaultConfig {
+        minSdkVersion 14
+        targetSdkVersion 27
+        versionName PUBLISH_VERSION
+        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        debug {
+            buildConfigField "Boolean", "DEBUG_MODE", "true"
+            buildConfigField "String", "SDK_VERSION_STRING", "\"!SDK-VERSION-STRING!:${PUBLISH_GROUP_ID}:${PUBLISH_ARTIFACT_ID}:${PUBLISH_VERSION}\""
+        }
+        release {
+            buildConfigField "Boolean", "DEBUG_MODE", "false"
+            buildConfigField "String", "SDK_VERSION_STRING", "\"!SDK-VERSION-STRING!:${PUBLISH_GROUP_ID}:${PUBLISH_ARTIFACT_ID}:${PUBLISH_VERSION}\""
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.txt'
+        }
+    }
+
+    lintOptions {
+        abortOnError false
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_7
+        targetCompatibility JavaVersion.VERSION_1_7
+    }
+}
+
+configurations {
+    javadocDeps
+}
+
+dependencies {
+    api 'com.android.support:support-v4:27.1.1'
+    javadocDeps 'com.android.support:support-v4:27.1.1'
+
+    api 'com.android.support:support-annotations:27.1.1'
+    javadocDeps 'com.android.support:support-annotations:27.1.1'
+
+    api 'com.android.installreferrer:installreferrer:1.0'
+    javadocDeps 'com.android.installreferrer:installreferrer:1.0'
+
+    // Unit testing dependencies
+    androidTestImplementation 'com.android.support.test:runner:1.0.2'
+    androidTestImplementation 'com.android.support.test:rules:1.0.2'
+    androidTestImplementation 'org.mockito:mockito-core:1.10.19'
+    androidTestImplementation 'com.google.dexmaker:dexmaker:1.2'
+    androidTestImplementation 'com.google.dexmaker:dexmaker-mockito:1.2'
+    testImplementation 'org.hamcrest:hamcrest-library:1.3'
+    testImplementation 'junit:junit:4.12'
+}
+
+tasks.whenTaskAdded { task ->
+    if (task.name == 'androidJavadocs') {
+        task.configure {
+            title = "Tune Android SDK " + PUBLISH_VERSION
+
+            classpath += configurations.javadocDeps
+            classpath += project.files(android.getBootClasspath().join(File.pathSeparator))
+
+            options {
+                links "http://docs.oracle.com/javase/7/docs/api/"
+                linksOffline "http://d.android.com/reference","${android.sdkDirectory}/docs/reference"
+
+                tags = [ "apiNote", "implSpec", "implNote" ]
+            }
+        }
+    }
+}
+
+afterEvaluate {
+    // fixes issue where javadoc can't find android symbols ref: http://stackoverflow.com/a/34572606
+    androidJavadocs.classpath += files(android.libraryVariants.collect { variant ->
+        variant.javaCompile.classpath.files
+    })
+}
+
+task clearAar(type: Delete) {
+    String aarName = "${project.name}-${android.defaultConfig.versionName}"
+
+    delete "../dist/${aarName}.aar"
+    doLast {
+        println "Deleting old /dist/${aarName}.aar"
+    }
+}
+
+task copyAar(type: Copy, dependsOn: [clearAar, assemble]) {
+    String outputDir = "${buildDir.getPath()}/outputs"
+
+    String archiveName = "${project.name}-release"
+    String aarName = "${project.name}-${android.defaultConfig.versionName}"
+
+    doLast {
+        println "Copying ${outputDir}/aar/${archiveName}.aar to /dist"
+    }
+
+    from("${outputDir}/aar/${archiveName}.aar")
+    into("../dist/")
+    include("${archiveName}.aar")
+    rename("${archiveName}.aar", "${aarName}.aar")
+
+    doLast {
+        println "Created /dist/${aarName}.aar"
+    }
+}
+
+// Delete old jar
+task clearJar(type: Delete) {
+    String jarName = "${project.name}-${android.defaultConfig.versionName}"
+
+    delete "../dist/${jarName}.jar"
+    doLast {
+        println "Deleting old /dist/${jarName}.jar"
+    }
+}
+
+// Extract jar from aar
+task makeJar(type:Copy, dependsOn: [clearJar, assemble]) {
+    String outputDir = "${buildDir.getPath()}/outputs"
+
+    String archiveName = "${project.name}-release"
+    String jarName = "${project.name}-${android.defaultConfig.versionName}"
+
+    doLast {
+        println "Extracting classes.jar from ${outputDir}/aar/${archiveName}.aar"
+    }
+
+    from(zipTree("${outputDir}/aar/${archiveName}.aar"))
+    into("../dist/")
+    include('classes.jar')
+    rename ('classes.jar', "${jarName}.jar")
+    doLast {
+        println "Created /dist/${jarName}.jar"
+    }
+}
+
+task sourcesJar(type: Jar) {
+    from android.sourceSets.main.java.srcDirs
+    classifier = 'sources'
+}
+
+task javadoc(type: Javadoc) {
+    source = android.sourceSets.main.java.srcDirs
+    classpath += project.files(android.getBootClasspath().join(File.pathSeparator))
+    classpath += configurations.javadocDeps
+    include "com/tune/package-info.java"
+    include "com/tune/ITune.java"
+    include "com/tune/Tune.java"
+    include "com/tune/TuneDeeplinkListener.java"
+    include "com/tune/TuneEvent.java"
+    include "com/tune/TuneEventItem.java"
+    include "com/tune/TuneGender.java"
+    include "com/tune/TunePreloadData.java"
+    exclude "com/tune/R.java"
+    options {
+        links "http://docs.oracle.com/javase/8/docs/api/"
+        linksOffline "http://d.android.com/reference","${android.sdkDirectory}/docs/reference"
+
+        tags = [ "apiNote", "implSpec", "implNote" ]
+    }
+    failOnError false
+}
+//
+//task javadocJar(type: Jar, dependsOn: javadoc) {
+//    classifier = 'javadoc'
+//    from javadoc.destinationDir
+//}
+
+task grantDebugPermissions {
+    String applicationId = 'com.tune.test'
+    def adb = android.getAdbExe().toString()
+    "${adb} devices".execute().text.eachLine {
+        if (it.endsWith("device")) {
+            def device = it.split()[0]
+            println "Granting permissions on devices ${device}"
+            def permissions = [
+                    'ACCESS_COARSE_LOCATION',
+                    'ACCESS_FINE_LOCATION',
+                    'ACCESS_MOCK_LOCATION',
+                    'GET_ACCOUNTS'
+            ]
+            permissions.each {
+                String cmd = "${adb} -s ${device} shell pm grant ${applicationId} android.permission.${it}"
+                println "Grant permission to ${it}"
+                def process = cmd.execute()
+                process.waitFor()
+                def exitValue = process.exitValue()
+                if (!exitValue) {
+                    println "Failed to grant permission ${it}"
+                }
+                process.text.each { println it }
+            }
+        }
+    }
+}
+
+artifacts {
+//    archives javadocJar
+    archives sourcesJar
+}
+
+
+// Allow us to build as an Android Studio library
+apply from: "android-release-aar.gradle"
+
+// CheckStyle
+apply from: "../config/android-checkstyle.gradle"
